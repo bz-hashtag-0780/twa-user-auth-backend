@@ -1,8 +1,8 @@
 const express = require('express');
 const bodyParser = require('body-parser');
-const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const cors = require('cors');
+const { validate, isErrorOfType } = require('@telegram-apps/init-data-node');
 require('dotenv').config();
 
 const app = express();
@@ -20,58 +20,6 @@ app.use(
 
 app.use(bodyParser.json());
 
-// Function to validate Telegram `initData`
-const isValidTelegramInitData = (initData) => {
-	try {
-		console.log('Raw initData:', initData);
-
-		// Decode the initData to make it human-readable
-		const decodedInitData = decodeURIComponent(initData);
-		console.log('Decoded initData:', decodedInitData);
-
-		// Parse initData
-		const urlSearchParams = new URLSearchParams(decodedInitData);
-		const params = Object.fromEntries(urlSearchParams.entries());
-		console.log('Parsed params:', params);
-
-		if (!params.hash) {
-			console.error('Missing hash in initData');
-			return false;
-		}
-
-		// Extract and remove the hash
-		const hash = params.hash;
-		delete params.hash;
-
-		// Avoid re-stringifying or transforming the user field
-		const secretKey = crypto
-			.createHash('sha256')
-			.update(BOT_TOKEN)
-			.digest();
-		const dataCheckString = Object.keys(params)
-			.sort()
-			.map((key) => `${key}=${params[key]}`)
-			.join('\n');
-		console.log('Data check string:', dataCheckString);
-
-		// Compute the hash
-		const computedHash = crypto
-			.createHmac('sha256', secretKey)
-			.update(dataCheckString)
-			.digest('hex');
-		console.log('Computed hash:', computedHash);
-
-		// Validate the hash
-		const isValid = computedHash === hash;
-		console.log('Hash validation result:', isValid);
-
-		return isValid;
-	} catch (error) {
-		console.error('Error validating initData:', error.message);
-		return false;
-	}
-};
-
 // Endpoint to authenticate Telegram users
 app.post('/auth', (req, res) => {
 	const { initData } = req.body;
@@ -80,36 +28,50 @@ app.post('/auth', (req, res) => {
 		return res.status(400).json({ error: 'initData is required' });
 	}
 
-	// Validate initData
-	if (!isValidTelegramInitData(initData)) {
-		return res.status(400).json({ error: 'Invalid Telegram data' });
-	}
+	try {
+		// Validate initData
+		validate(initData, BOT_TOKEN);
 
-	// Decode initData and extract parameters
-	const decodedInitData = decodeURIComponent(initData);
-	const urlSearchParams = new URLSearchParams(decodedInitData);
-	const params = Object.fromEntries(urlSearchParams.entries());
+		// Decode initData and extract parameters
+		const decodedInitData = decodeURIComponent(initData);
+		const urlSearchParams = new URLSearchParams(decodedInitData);
+		const params = Object.fromEntries(urlSearchParams.entries());
 
-	// Parse the `user` field if available
-	let user = {};
-	if (params.user) {
-		try {
-			user = JSON.parse(params.user);
-		} catch (error) {
+		// Parse the `user` field if available
+		let user = {};
+		if (params.user) {
+			try {
+				user = JSON.parse(params.user);
+			} catch (error) {
+				return res
+					.status(400)
+					.json({ error: 'Invalid user data format in initData' });
+			}
+		}
+
+		// Generate a JWT token
+		const token = jwt.sign(
+			{ id: user.id, username: user.username },
+			JWT_SECRET,
+			{ expiresIn: '1h' }
+		);
+
+		res.json({ message: 'Authenticated', token });
+	} catch (error) {
+		// Handle validation errors
+		if (isErrorOfType(error, 'ERR_SIGN_INVALID')) {
+			return res.status(400).json({ error: 'Invalid signature!' });
+		} else if (isErrorOfType(error, 'ERR_AUTH_DATE_INVALID')) {
 			return res
 				.status(400)
-				.json({ error: 'Invalid user data format in initData' });
+				.json({ error: 'auth_date is missing or invalid!' });
+		} else if (isErrorOfType(error, 'ERR_EXPIRED')) {
+			return res.status(400).json({ error: 'initData has expired!' });
+		} else {
+			console.error('Unknown validation error:', error.message);
+			return res.status(500).json({ error: 'Internal server error' });
 		}
 	}
-
-	// Generate a JWT token
-	const token = jwt.sign(
-		{ id: user.id, username: user.username },
-		JWT_SECRET,
-		{ expiresIn: '1h' }
-	);
-
-	res.json({ message: 'Authenticated', token });
 });
 
 // Start the server
