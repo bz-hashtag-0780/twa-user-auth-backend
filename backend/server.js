@@ -40,6 +40,11 @@ const isValidTelegramInitData = (initData) => {
 		const hash = params.hash;
 		delete params.hash;
 
+		// Re-encode user field
+		if (params.user) {
+			params.user = JSON.stringify(JSON.parse(params.user));
+		}
+
 		const secretKey = crypto
 			.createHash('sha256')
 			.update(BOT_TOKEN)
