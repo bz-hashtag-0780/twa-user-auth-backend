@@ -16,7 +16,7 @@ const JWT_SECRET = process.env.JWT_SECRET;
 // For production uncomment the following code and remove the above line app.use(cors());
 app.use(
 	cors({
-		origin: process.env.FRONTEND_URL || 'http://localhost:3000', // Replace with your frontend URL
+		origin: process.env.FRONTEND_URL || 'http://localhost:3001', // Replace with your frontend URL
 		methods: ['POST'],
 	})
 );
