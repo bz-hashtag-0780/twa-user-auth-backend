@@ -57,6 +57,7 @@ export const AuthContextProvider = ({
 				} catch (error) {
 					setError('Authentication failed');
 					console.error('Authentication failed:', error);
+					setInitData(initData);
 					setToken(null);
 					setUserID(null);
 					setUsername(null);
