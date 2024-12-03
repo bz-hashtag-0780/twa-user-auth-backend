@@ -14,6 +14,8 @@ type AuthContextType = {
 	userID: string | null;
 	username: string | null;
 	token: string | null;
+	initData: string | null;
+	error: string | null;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -26,6 +28,13 @@ export const AuthContextProvider = ({
 	const [userID, setUserID] = useState<string | null>(null);
 	const [username, setUsername] = useState<string | null>(null);
 	const [token, setToken] = useState<string | null>(null);
+	const [initData, setInitData] = useState<string | null>(null);
+	const [error, setError] = useState<string | null>(null);
+
+	const isTokenValid = (token: string): boolean => {
+		const { exp } = jwtDecode<JwtPayload>(token);
+		return exp !== undefined && exp * 1000 > Date.now();
+	};
 
 	useEffect(() => {
 		async function authenticateUser() {
@@ -34,29 +43,44 @@ export const AuthContextProvider = ({
 
 				try {
 					const response = await axios.post(
-						'http://localhost:5000/auth',
-						{
-							initData,
-						}
+						`${process.env.NEXT_PUBLIC_API_URL}/auth`,
+						{ initData }
 					);
 
 					const { id, username } = jwtDecode<CustomJwtPayload>(
 						response.data.token
 					);
+					setInitData(initData);
 					setToken(response.data.token);
 					setUserID(id);
 					setUsername(username);
 				} catch (error) {
+					setError('Authentication failed');
 					console.error('Authentication failed:', error);
+					setToken(null);
+					setUserID(null);
+					setUsername(null);
 				}
 			}
 		}
 
-		authenticateUser();
-	}, []);
+		// Check the token if it already exists
+		if (token) {
+			if (!isTokenValid(token)) {
+				console.warn('Token expired. Clearing user state.');
+				setToken(null);
+				setUserID(null);
+				setUsername(null);
+			}
+		} else {
+			authenticateUser();
+		}
+	}, [token]);
 
 	return (
-		<AuthContext.Provider value={{ userID, username, token }}>
+		<AuthContext.Provider
+			value={{ userID, username, token, initData, error }}
+		>
 			{children}
 		</AuthContext.Provider>
 	);

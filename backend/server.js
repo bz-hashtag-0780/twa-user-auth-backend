@@ -11,13 +11,27 @@ const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const JWT_SECRET = process.env.JWT_SECRET;
 
 // Middleware
-app.use(cors());
+
+// app.use(cors()); // For development only
+// For production uncomment the following code and remove the above line app.use(cors());
+app.use(
+	cors({
+		origin: process.env.FRONTEND_URL || 'http://localhost:3000', // Replace with your frontend URL
+		methods: ['POST'],
+	})
+);
+
 app.use(bodyParser.json());
 
 // Function to validate Telegram `initData`
 const isValidTelegramInitData = (initData) => {
 	const urlSearchParams = new URLSearchParams(initData);
 	const params = Object.fromEntries(urlSearchParams.entries());
+
+	if (!params.id || !params.username) {
+		console.error('Missing required parameters in initData');
+		return res.status(400).json({ error: 'Invalid Telegram data' });
+	}
 
 	if (!params.hash) return false;
 
@@ -40,6 +54,10 @@ const isValidTelegramInitData = (initData) => {
 // Endpoint to authenticate Telegram users
 app.post('/auth', (req, res) => {
 	const { initData } = req.body;
+
+	if (!initData) {
+		return res.status(400).json({ error: 'initData is required' });
+	}
 
 	if (!isValidTelegramInitData(initData)) {
 		return res.status(400).json({ error: 'Invalid Telegram data' });
