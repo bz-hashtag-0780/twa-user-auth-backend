@@ -25,9 +25,11 @@ const isValidTelegramInitData = (initData) => {
 	try {
 		console.log('Raw initData:', initData);
 
+		// Decode the initData to make it human-readable
 		const decodedInitData = decodeURIComponent(initData);
 		console.log('Decoded initData:', decodedInitData);
 
+		// Parse initData
 		const urlSearchParams = new URLSearchParams(decodedInitData);
 		const params = Object.fromEntries(urlSearchParams.entries());
 		console.log('Parsed params:', params);
@@ -37,14 +39,11 @@ const isValidTelegramInitData = (initData) => {
 			return false;
 		}
 
+		// Extract and remove the hash
 		const hash = params.hash;
 		delete params.hash;
 
-		// Re-encode user field
-		if (params.user) {
-			params.user = JSON.stringify(JSON.parse(params.user));
-		}
-
+		// Avoid re-stringifying or transforming the user field
 		const secretKey = crypto
 			.createHash('sha256')
 			.update(BOT_TOKEN)
@@ -55,12 +54,14 @@ const isValidTelegramInitData = (initData) => {
 			.join('\n');
 		console.log('Data check string:', dataCheckString);
 
+		// Compute the hash
 		const computedHash = crypto
 			.createHmac('sha256', secretKey)
 			.update(dataCheckString)
 			.digest('hex');
 		console.log('Computed hash:', computedHash);
 
+		// Validate the hash
 		const isValid = computedHash === hash;
 		console.log('Hash validation result:', isValid);
 
