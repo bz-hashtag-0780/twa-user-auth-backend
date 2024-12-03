@@ -23,12 +23,19 @@ app.use(bodyParser.json());
 // Function to validate Telegram `initData`
 const isValidTelegramInitData = (initData) => {
 	try {
+		console.log('Raw initData:', initData);
+
 		const decodedInitData = decodeURIComponent(initData);
+		console.log('Decoded initData:', decodedInitData);
+
 		const urlSearchParams = new URLSearchParams(decodedInitData);
 		const params = Object.fromEntries(urlSearchParams.entries());
+		console.log('Parsed params:', params);
 
-		// Ensure the required fields are present
-		if (!params.hash) return false;
+		if (!params.hash) {
+			console.error('Missing hash in initData');
+			return false;
+		}
 
 		const hash = params.hash;
 		delete params.hash;
@@ -41,14 +48,20 @@ const isValidTelegramInitData = (initData) => {
 			.sort()
 			.map((key) => `${key}=${params[key]}`)
 			.join('\n');
+		console.log('Data check string:', dataCheckString);
+
 		const computedHash = crypto
 			.createHmac('sha256', secretKey)
 			.update(dataCheckString)
 			.digest('hex');
+		console.log('Computed hash:', computedHash);
 
-		return computedHash === hash;
+		const isValid = computedHash === hash;
+		console.log('Hash validation result:', isValid);
+
+		return isValid;
 	} catch (error) {
-		console.error('Error decoding initData:', error.message);
+		console.error('Error validating initData:', error.message);
 		return false;
 	}
 };
