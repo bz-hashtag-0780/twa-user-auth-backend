@@ -11,12 +11,9 @@ const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const JWT_SECRET = process.env.JWT_SECRET;
 
 // Middleware
-
-// app.use(cors()); // For development only
-// For production uncomment the following code and remove the above line app.use(cors());
 app.use(
 	cors({
-		origin: process.env.FRONTEND_URL || 'http://localhost:3001', // Replace with your frontend URL
+		origin: process.env.FRONTEND_URL || 'http://localhost:3001', // Replace with your production frontend URL
 		methods: ['POST'],
 	})
 );
@@ -25,30 +22,35 @@ app.use(bodyParser.json());
 
 // Function to validate Telegram `initData`
 const isValidTelegramInitData = (initData) => {
-	const urlSearchParams = new URLSearchParams(initData);
-	const params = Object.fromEntries(urlSearchParams.entries());
+	try {
+		const decodedInitData = decodeURIComponent(initData);
+		const urlSearchParams = new URLSearchParams(decodedInitData);
+		const params = Object.fromEntries(urlSearchParams.entries());
 
-	if (!params.id || !params.username) {
-		console.error('Missing required parameters in initData');
-		return res.status(400).json({ error: 'Invalid Telegram data' });
+		// Ensure the required fields are present
+		if (!params.hash) return false;
+
+		const hash = params.hash;
+		delete params.hash;
+
+		const secretKey = crypto
+			.createHash('sha256')
+			.update(BOT_TOKEN)
+			.digest();
+		const dataCheckString = Object.keys(params)
+			.sort()
+			.map((key) => `${key}=${params[key]}`)
+			.join('\n');
+		const computedHash = crypto
+			.createHmac('sha256', secretKey)
+			.update(dataCheckString)
+			.digest('hex');
+
+		return computedHash === hash;
+	} catch (error) {
+		console.error('Error decoding initData:', error.message);
+		return false;
 	}
-
-	if (!params.hash) return false;
-
-	const hash = params.hash;
-	delete params.hash;
-
-	const secretKey = crypto.createHash('sha256').update(BOT_TOKEN).digest();
-	const dataCheckString = Object.keys(params)
-		.sort()
-		.map((key) => `${key}=${params[key]}`)
-		.join('\n');
-	const computedHash = crypto
-		.createHmac('sha256', secretKey)
-		.update(dataCheckString)
-		.digest('hex');
-
-	return computedHash === hash;
 };
 
 // Endpoint to authenticate Telegram users
@@ -59,52 +61,37 @@ app.post('/auth', (req, res) => {
 		return res.status(400).json({ error: 'initData is required' });
 	}
 
+	// Validate initData
 	if (!isValidTelegramInitData(initData)) {
 		return res.status(400).json({ error: 'Invalid Telegram data' });
 	}
 
-	const urlSearchParams = new URLSearchParams(initData);
+	// Decode initData and extract parameters
+	const decodedInitData = decodeURIComponent(initData);
+	const urlSearchParams = new URLSearchParams(decodedInitData);
 	const params = Object.fromEntries(urlSearchParams.entries());
 
-	// Generate JWT token
+	// Parse the `user` field if available
+	let user = {};
+	if (params.user) {
+		try {
+			user = JSON.parse(params.user);
+		} catch (error) {
+			return res
+				.status(400)
+				.json({ error: 'Invalid user data format in initData' });
+		}
+	}
+
+	// Generate a JWT token
 	const token = jwt.sign(
-		{ id: params.id, username: params.username },
+		{ id: user.id, username: user.username },
 		JWT_SECRET,
 		{ expiresIn: '1h' }
 	);
 
 	res.json({ message: 'Authenticated', token });
 });
-
-//testing
-
-const userData = {
-	id: '123456789',
-	username: 'example_user',
-	auth_date: Math.floor(Date.now() / 1000), // Current timestamp
-};
-
-// Create the data_check_string
-const dataCheckString = Object.keys(userData)
-	.sort()
-	.map((key) => `${key}=${userData[key]}`)
-	.join('\n');
-
-// Generate the secret key using the bot token
-const secretKey = crypto.createHash('sha256').update(BOT_TOKEN).digest();
-
-// Generate the hash
-const hash = crypto
-	.createHmac('sha256', secretKey)
-	.update(dataCheckString)
-	.digest('hex');
-
-// Combine everything into initData
-const initData = `${Object.entries(userData)
-	.map(([key, value]) => `${key}=${value}`)
-	.join('&')}&hash=${hash}`;
-
-console.log('Generated initData:', initData);
 
 // Start the server
 app.listen(PORT, () => {
